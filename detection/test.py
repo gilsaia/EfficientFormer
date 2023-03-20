@@ -17,10 +17,13 @@ from mmdet.datasets import (build_dataloader, build_dataset,
                             replace_ImageToTensor)
 from mmdet.models import build_detector
 
+import numpy as np
+
 import sys
 
 import backbone
 import backbonev2
+import backbone_trt
 
 
 def parse_args():

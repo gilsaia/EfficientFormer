@@ -14,6 +14,7 @@ from timm.models.layers.helpers import to_2tuple
 
 try:
     from mmdet.models.builder import BACKBONES as det_BACKBONES
+    from mmcv.utils import Registry as det_registry
     from mmdet.utils import get_root_logger
     from mmcv.runner import _load_checkpoint
 
@@ -107,14 +108,17 @@ class Attention4D(torch.nn.Module):
         self.v_local = nn.Sequential(nn.Conv2d(self.num_heads * self.d, self.num_heads * self.d,
                                                kernel_size=3, stride=1, padding=1, groups=self.num_heads * self.d),
                                      nn.BatchNorm2d(self.num_heads * self.d), )
-        self.talking_head1 = nn.Conv2d(self.num_heads, self.num_heads, kernel_size=1, stride=1, padding=0)
-        self.talking_head2 = nn.Conv2d(self.num_heads, self.num_heads, kernel_size=1, stride=1, padding=0)
+        self.talking_head1 = nn.Conv2d(
+            self.num_heads, self.num_heads, kernel_size=1, stride=1, padding=0)
+        self.talking_head2 = nn.Conv2d(
+            self.num_heads, self.num_heads, kernel_size=1, stride=1, padding=0)
 
         self.proj = nn.Sequential(act_layer(),
                                   nn.Conv2d(self.dh, dim, 1),
                                   nn.BatchNorm2d(dim), )
 
-        points = list(itertools.product(range(self.resolution), range(self.resolution)))
+        points = list(itertools.product(
+            range(self.resolution), range(self.resolution)))
         N = len(points)
         attention_offsets = {}
         idxs = []
@@ -140,7 +144,8 @@ class Attention4D(torch.nn.Module):
         if mode and hasattr(self, 'ab'):
             del self.ab
         else:
-            self.ab = self.attention_biases_seg[:, self.attention_bias_idxs_seg]
+            self.ab = self.attention_biases_seg[:,
+                                                self.attention_bias_idxs_seg]
 
     def forward(self, x):  # x (B,N,C)
         B, C, H, W = x.shape
@@ -149,15 +154,20 @@ class Attention4D(torch.nn.Module):
             H = H // 2
             W = W // 2
 
-        q = self.q(x).flatten(2).reshape(B, self.num_heads, -1, H * W).permute(0, 1, 3, 2)
-        k = self.k(x).flatten(2).reshape(B, self.num_heads, -1, H * W).permute(0, 1, 2, 3)
+        q = self.q(x).flatten(2).reshape(
+            B, self.num_heads, -1, H * W).permute(0, 1, 3, 2)
+        k = self.k(x).flatten(2).reshape(
+            B, self.num_heads, -1, H * W).permute(0, 1, 2, 3)
         v = self.v(x)
         v_local = self.v_local(v)
-        v = v.flatten(2).reshape(B, self.num_heads, -1, H * W).permute(0, 1, 3, 2)
+        v = v.flatten(2).reshape(B, self.num_heads, -
+                                 1, H * W).permute(0, 1, 3, 2)
 
         attn = (q @ k) * self.scale
-        bias = self.attention_biases_seg[:, self.attention_bias_idxs_seg] if self.training else self.ab
-        bias = torch.nn.functional.interpolate(bias.unsqueeze(0), size=(attn.size(-2), attn.size(-1)), mode='bicubic')
+        bias = self.attention_biases_seg[:,
+                                         self.attention_bias_idxs_seg] if self.training else self.ab
+        bias = torch.nn.functional.interpolate(bias.unsqueeze(
+            0), size=(attn.size(-2), attn.size(-1)), mode='bicubic')
         attn = attn + bias
 
         attn = self.talking_head1(attn)
@@ -231,7 +241,8 @@ class Attention4DDownsample(torch.nn.Module):
             self.out_dim = dim
 
         self.resolution2 = math.ceil(self.resolution / 2)
-        self.q = LGQuery(dim, self.num_heads * self.key_dim, self.resolution, self.resolution2)
+        self.q = LGQuery(dim, self.num_heads * self.key_dim,
+                         self.resolution, self.resolution2)
 
         self.N = self.resolution ** 2
         self.N2 = self.resolution2 ** 2
@@ -250,7 +261,8 @@ class Attention4DDownsample(torch.nn.Module):
             nn.Conv2d(self.dh, self.out_dim, 1),
             nn.BatchNorm2d(self.out_dim), )
 
-        points = list(itertools.product(range(self.resolution), range(self.resolution)))
+        points = list(itertools.product(
+            range(self.resolution), range(self.resolution)))
         points_ = list(itertools.product(
             range(self.resolution2), range(self.resolution2)))
         N = len(points)
@@ -261,7 +273,8 @@ class Attention4DDownsample(torch.nn.Module):
             for p2 in points:
                 size = 1
                 offset = (
-                    abs(p1[0] * math.ceil(self.resolution / self.resolution2) - p2[0] + (size - 1) / 2),
+                    abs(p1[0] * math.ceil(self.resolution /
+                        self.resolution2) - p2[0] + (size - 1) / 2),
                     abs(p1[1] * math.ceil(self.resolution / self.resolution2) - p2[1] + (size - 1) / 2))
                 if offset not in attention_offsets:
                     attention_offsets[offset] = len(attention_offsets)
@@ -282,20 +295,26 @@ class Attention4DDownsample(torch.nn.Module):
         if mode and hasattr(self, 'ab'):
             del self.ab
         else:
-            self.ab = self.attention_biases_seg[:, self.attention_bias_idxs_seg]
+            self.ab = self.attention_biases_seg[:,
+                                                self.attention_bias_idxs_seg]
 
     def forward(self, x):  # x (B,N,C)
         B, C, H, W = x.shape
 
-        q = self.q(x).flatten(2).reshape(B, self.num_heads, -1, H * W // 4).permute(0, 1, 3, 2)
-        k = self.k(x).flatten(2).reshape(B, self.num_heads, -1, H * W).permute(0, 1, 2, 3)
+        q = self.q(x).flatten(2).reshape(
+            B, self.num_heads, -1, H * W // 4).permute(0, 1, 3, 2)
+        k = self.k(x).flatten(2).reshape(
+            B, self.num_heads, -1, H * W).permute(0, 1, 2, 3)
         v = self.v(x)
         v_local = self.v_local(v)
-        v = v.flatten(2).reshape(B, self.num_heads, -1, H * W).permute(0, 1, 3, 2)
+        v = v.flatten(2).reshape(B, self.num_heads, -
+                                 1, H * W).permute(0, 1, 3, 2)
 
         attn = (q @ k) * self.scale
-        bias = self.attention_biases_seg[:, self.attention_bias_idxs_seg] if self.training else self.ab
-        bias = torch.nn.functional.interpolate(bias.unsqueeze(0), size=(attn.size(-2), attn.size(-1)), mode='bicubic')
+        bias = self.attention_biases_seg[:,
+                                         self.attention_bias_idxs_seg] if self.training else self.ab
+        bias = torch.nn.functional.interpolate(bias.unsqueeze(
+            0), size=(attn.size(-2), attn.size(-1)), mode='bicubic')
         attn = attn + bias
 
         attn = attn.softmax(dim=-1)
@@ -317,14 +336,17 @@ class Embedding(nn.Module):
 
         if self.light:
             self.new_proj = nn.Sequential(
-                nn.Conv2d(in_chans, in_chans, kernel_size=3, stride=2, padding=1, groups=in_chans),
+                nn.Conv2d(in_chans, in_chans, kernel_size=3,
+                          stride=2, padding=1, groups=in_chans),
                 nn.BatchNorm2d(in_chans),
                 nn.Hardswish(),
-                nn.Conv2d(in_chans, embed_dim, kernel_size=1, stride=1, padding=0),
+                nn.Conv2d(in_chans, embed_dim, kernel_size=1,
+                          stride=1, padding=0),
                 nn.BatchNorm2d(embed_dim),
             )
             self.skip = nn.Sequential(
-                nn.Conv2d(in_chans, embed_dim, kernel_size=1, stride=2, padding=0),
+                nn.Conv2d(in_chans, embed_dim, kernel_size=1,
+                          stride=2, padding=0),
                 nn.BatchNorm2d(embed_dim)
             )
         elif self.asub:
@@ -422,7 +444,8 @@ class AttnFFN(nn.Module):
 
         super().__init__()
 
-        self.token_mixer = Attention4D(dim, resolution=resolution, act_layer=act_layer, stride=stride)
+        self.token_mixer = Attention4D(
+            dim, resolution=resolution, act_layer=act_layer, stride=stride)
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim,
                        act_layer=act_layer, drop=drop, mid_conv=True)
@@ -482,7 +505,7 @@ def meta_blocks(dim, index, layers,
     blocks = []
     for block_idx in range(layers[index]):
         block_dpr = drop_path_rate * (
-                block_idx + sum(layers[:index])) / (sum(layers) - 1)
+            block_idx + sum(layers[:index])) / (sum(layers) - 1)
         mlp_ratio = e_ratios[str(index)][block_idx]
         if index >= 2 and block_idx > layers[index] - 1 - vit_num:
             if index == 2:
@@ -546,7 +569,8 @@ class EfficientFormer(nn.Module):
                                 drop_path_rate=drop_path_rate,
                                 use_layer_scale=use_layer_scale,
                                 layer_scale_init_value=layer_scale_init_value,
-                                resolution=math.ceil(resolution / (2 ** (i + 2))),
+                                resolution=math.ceil(
+                                    resolution / (2 ** (i + 2))),
                                 vit_num=vit_num,
                                 e_ratios=e_ratios)
             network.append(stage)
@@ -664,7 +688,8 @@ class EfficientFormer(nn.Module):
         # print(x.size())
         x = self.norm(x)
         if self.dist:
-            cls_out = self.head(x.flatten(2).mean(-1)), self.dist_head(x.flatten(2).mean(-1))
+            cls_out = self.head(x.flatten(2).mean(-1)
+                                ), self.dist_head(x.flatten(2).mean(-1))
             if not self.training:
                 cls_out = (cls_out[0] + cls_out[1]) / 2
         else:
@@ -687,7 +712,6 @@ if has_mmdet:
                 e_ratios=expansion_ratios_S0,
                 **kwargs)
 
-
     @det_BACKBONES.register_module()
     class efficientformerv2_s1_feat(EfficientFormer):
         def __init__(self, **kwargs):
@@ -701,7 +725,6 @@ if has_mmdet:
                 e_ratios=expansion_ratios_S1,
                 **kwargs)
 
-
     @det_BACKBONES.register_module()
     class efficientformerv2_s2_feat(EfficientFormer):
         def __init__(self, **kwargs):
@@ -714,7 +737,6 @@ if has_mmdet:
                 vit_num=4,
                 e_ratios=expansion_ratios_S2,
                 **kwargs)
-
 
     @det_BACKBONES.register_module()
     class efficientformerv2_l_feat(EfficientFormer):
