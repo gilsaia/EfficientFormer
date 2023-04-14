@@ -42,7 +42,7 @@ def pytorch2onnx(model,
         img_meta_list[0][0]['show_img'])
     img_meta_list[0][0]['scale_factor'] = torch.from_numpy(
         img_meta_list[0][0]['scale_factor'])
-    # print(f'img meta list:{img_meta_list}')
+    print(f'img meta list:{img_meta_list}')
 
     if skip_postprocess:
         warnings.warn('Not all models support export onnx without post '
@@ -64,12 +64,12 @@ def pytorch2onnx(model,
         return
 
     # replace original forward function
-    # origin_forward = model.forward
-    # model.forward = partial(
-    #     model.forward,
-    #     img_metas=img_meta_list,
-    #     return_loss=False,
-    #     rescale=False)
+    origin_forward = model.forward
+    model.forward = partial(
+        model.forward,
+        img_metas=img_meta_list,
+        return_loss=False,
+        rescale=False)
 
     # output_names = ['dets', 'labels']
     # if model.with_mask:
@@ -97,18 +97,18 @@ def pytorch2onnx(model,
 
     torch.onnx.export(
         model,
-        one_img,
+        img_list,
         output_file,
         input_names=[input_name],
         # output_names=output_names,
         export_params=True,
-        # keep_initializers_as_inputs=True,
+        keep_initializers_as_inputs=True,
         do_constant_folding=False,
         verbose=show,
         opset_version=11,
         dynamic_axes=dynamic_axes)
 
-    # model.forward = origin_forward
+    model.forward = origin_forward
 
     if do_simplify:
         import onnxsim
@@ -314,13 +314,14 @@ if __name__ == '__main__':
         input_shape = (1, 3) + tuple(args.shape)
     else:
         raise ValueError('invalid input shape')
+    input_shape = (1, 3, 800, 1344)
 
     # build the model and load checkpoint
     model = build_model_from_cfg(args.config, args.checkpoint,
                                  args.cfg_options)
     # print(model.backbone)
-    model_ori = model
-    model = model_ori.backbone
+    # model_ori = model
+    # model = model_ori.backbone
 
     if not args.input_img:
         args.input_img = osp.join(osp.dirname(__file__), './demo.jpg')
